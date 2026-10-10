@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Реестр учеников — Э-Күндөлүк</title>
+  <link rel="stylesheet" href="../css/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar__brand">
+        <div class="sidebar__logo">🎵</div>
+        <div><strong>Э-Күндөлүк</strong><span>Музыкальная школа</span></div>
+      </div>
+      <nav class="sidebar__nav">
+        <a class="nav-item" href="dashboard.html"><span class="nav-item__icon">📊</span><span>Дашборд</span></a>
+        <a class="nav-item" href="teachers.html"><span class="nav-item__icon">👨‍🏫</span><span>Преподаватели</span></a>
+        <a class="nav-item" href="students.html"><span class="nav-item__icon">🎓</span><span>Реестр учеников</span></a>
+        <a class="nav-item" href="events.html"><span class="nav-item__icon">🎫</span><span>Концерты и анонсы</span></a>
+      </nav>
+      <div class="sidebar__foot">
+        <div class="user-card">
+          <div class="user-card__avatar" data-user-avatar>?</div>
+          <div class="user-card__info"><strong data-user-name>Пользователь</strong><span>Директор</span></div>
+        </div>
+        <button class="btn btn--ghost btn--block" id="logout-btn">Выйти</button>
+      </div>
+    </aside>
+
+    <div class="app-main">
+      <header class="topbar">
+        <button class="topbar__menu" id="menu-btn" aria-label="Меню">☰</button>
+        <div class="topbar__titles">
+          <h1 class="topbar__title">Реестр учеников</h1>
+          <p class="topbar__subtitle">Все ученики школы с фильтрацией по классам</p>
+        </div>
+        <div class="topbar__right"><span class="role-chip">Директор</span></div>
+      </header>
+
+      <main class="content">
+        <div class="page-head">
+          <div>
+            <h2 class="page-head__title">Реестр учеников</h2>
+            <p class="muted">Общий список всех учеников школы.</p>
+          </div>
+        </div>
+
+        <div class="toolbar">
+          <label class="toolbar__field">
+            <span>Фильтр по классу:</span>
+            <select class="input input--sm" id="class-filter">
+              <option value="">Все классы</option>
+            </select>
+          </label>
+          <span class="toolbar__count" id="count-label"></span>
+        </div>
+
+        <div class="panel">
+          <div class="table-wrap">
+            <table class="table">
+              <thead>
+                <tr><th>ФИО</th><th>Класс</th><th>Предметы</th><th>Логин</th><th></th></tr>
+              </thead>
+              <tbody id="students-body"></tbody>
+            </table>
+          </div>
+          <div id="students-empty" class="state state--empty" style="display:none">
+            <div class="state__icon">🎓</div>
+            <p>Нет учеников для выбранного фильтра.</p>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="../js/config.js"></script>
+  <script src="../js/store.js"></script>
+  <script src="../js/mock.js"></script>
+  <script src="../js/api.js"></script>
+  <script src="../js/ui.js"></script>
+  <script src="../js/shell.js"></script>
+  <script>
+    (function () {
+      App.shell.setup({ login: '../login.html', home: 'dashboard.html', folder: 'director' });
+      if (!App.shell.guard(['DIRECTOR'])) return;
+      App.shell.init({ title: 'Реестр учеников', subtitle: 'Все ученики школы' });
+
+      var tbody = document.getElementById('students-body');
+      var empty = document.getElementById('students-empty');
+      var filterSel = document.getElementById('class-filter');
+      var countLabel = document.getElementById('count-label');
+      var all = [];
+      var filter = '';
+
+      filterSel.addEventListener('change', function (e) { filter = e.target.value; draw(); });
+
+      function currentList() {
+        return filter ? all.filter((s) => s.class_name === filter) : all;
+      }
+
+      function buildRows(list) {
+        empty.style.display = list.length ? 'none' : '';
+        return list.map(function (s) {
+          return App.ui.h('tr', { 'data-id': String(s.id) },
+            App.ui.h('td', null, App.ui.h('strong', null, s.full_name)),
+            App.ui.h('td', null, App.ui.h('span', { class: 'pill' }, s.class_name || '—')),
+            App.ui.h('td', null, App.ui.h('div', { class: 'tags' }, (s.subjects || []).map((sub) => App.ui.h('span', { class: 'tag' }, sub)))),
+            App.ui.h('td', null, s.login || '—'),
+            App.ui.h('td', { class: 'col-actions' },
+              App.ui.h('button', { class: 'btn btn--danger btn--sm', type: 'button', 'aria-label': 'Удалить' }, 'Удалить')));
+        });
+      }
+
+      function draw() {
+        App.ui.mount(tbody, buildRows(currentList()));
+      }
+
+      // удаление ученика (доступно директору)
+      tbody.addEventListener('click', function (e) {
+        var btn = e.target.closest('.btn--danger');
+        if (!btn) return;
+        var tr = btn.closest('tr');
+        var id = Number(tr.getAttribute('data-id'));
+        var name = tr.querySelector('strong').textContent;
+        App.ui.confirmDialog('Удалить ученика «' + name + '»? Все его данные (журнал, репертуар, задания) будут удалены.')
+          .then(function (ok) {
+            if (!ok) return;
+            App.api.del(App.CONFIG.ENDPOINTS.student(id))
+              .then(function () { App.ui.toast('Ученик удалён', 'success'); loadAll(); })
+              .catch(function (err) { App.ui.toast(err.message, 'error'); });
+          });
+      });
+
+      function loadAll() {
+        App.shell.loadInto(tbody,
+          () => App.api.get(App.CONFIG.ENDPOINTS.students),
+          function (list) {
+            all = list || [];
+            countLabel.textContent = App.ui.plural(all.length, 'ученик', 'ученика', 'учеников') + ' в школе';
+            var current = filterSel.value;
+            filterSel.innerHTML = '';
+            Array.from(new Set(all.map((s) => s.class_name).filter(Boolean))).sort().forEach(function (c) {
+              filterSel.appendChild(App.ui.h('option', { value: c }, c));
+            });
+            if (current) filterSel.value = current;
+            return buildRows(currentList());
+          });
+      }
+      loadAll();
+    })();
+  </script>
+</body>
+</html>

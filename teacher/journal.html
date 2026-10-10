@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Журнал и оценки — Э-Күндөлүк</title>
+  <link rel="stylesheet" href="../css/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar__brand">
+        <div class="sidebar__logo">🎵</div>
+        <div><strong>Э-Күндөлүк</strong><span>Музыкальная школа</span></div>
+      </div>
+      <nav class="sidebar__nav">
+        <a class="nav-item" href="dashboard.html"><span class="nav-item__icon">🎫</span><span>Главная и афиша</span></a>
+        <a class="nav-item" href="students.html"><span class="nav-item__icon">🎓</span><span>Мои ученики</span></a>
+        <a class="nav-item" href="journal.html"><span class="nav-item__icon">📓</span><span>Журнал и оценки</span></a>
+        <a class="nav-item" href="repertoire.html"><span class="nav-item__icon">🎼</span><span>Репертуарный план</span></a>
+        <a class="nav-item" href="homework.html"><span class="nav-item__icon">📎</span><span>Домашние задания</span></a>
+      </nav>
+      <div class="sidebar__foot">
+        <div class="user-card">
+          <div class="user-card__avatar" data-user-avatar>?</div>
+          <div class="user-card__info"><strong data-user-name>Пользователь</strong><span>Преподаватель</span></div>
+        </div>
+        <button class="btn btn--ghost btn--block" id="logout-btn">Выйти</button>
+      </div>
+    </aside>
+
+    <div class="app-main">
+      <header class="topbar">
+        <button class="topbar__menu" id="menu-btn" aria-label="Меню">☰</button>
+        <div class="topbar__titles">
+          <h1 class="topbar__title">Журнал и оценки</h1>
+          <p class="topbar__subtitle">Интерактивная таблица посещаемости и оценок</p>
+        </div>
+        <div class="topbar__right"><span class="role-chip">Преподаватель</span></div>
+      </header>
+
+      <main class="content">
+        <div class="page-head">
+          <div>
+            <h2 class="page-head__title">Журнал и оценки</h2>
+            <p class="muted">Отметьте посещаемость (Был / Н/Б) и выставьте оценки (1–5) с комментарием.</p>
+          </div>
+        </div>
+
+        <div class="toolbar">
+          <label class="toolbar__field"><span>Предмет:</span>
+            <select class="input input--sm" id="sel-subject"></select></label>
+          <label class="toolbar__field"><span>Группа:</span>
+            <select class="input input--sm" id="sel-class"><option value="">Все группы</option></select></label>
+          <label class="toolbar__field"><span>Дата:</span>
+            <input class="input input--sm" type="date" id="inp-date" /></label>
+        </div>
+
+        <div class="panel" id="journal-panel">
+          <div class="table-wrap">
+            <table class="table" id="journal-table">
+              <thead>
+                <tr>
+                  <th>Ученик</th><th>Посещение</th><th>Оценка</th><th>Комментарий</th>
+                </tr>
+              </thead>
+              <tbody id="journal-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button class="btn btn--primary" id="btn-save">💾 Сохранить журнал</button>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="../js/config.js"></script>
+  <script src="../js/store.js"></script>
+  <script src="../js/mock.js"></script>
+  <script src="../js/api.js"></script>
+  <script src="../js/ui.js"></script>
+  <script src="../js/shell.js"></script>
+  <script>
+    (function () {
+      App.shell.setup({ login: '../login.html', home: 'dashboard.html', folder: 'teacher' });
+      if (!App.shell.guard(['TEACHER'])) return;
+      App.shell.init({ title: 'Журнал и оценки', subtitle: 'Посещаемость и успеваемость' });
+
+      var subjectSel = document.getElementById('sel-subject');
+      var classSel = document.getElementById('sel-class');
+      var dateInput = document.getElementById('inp-date');
+      var body = document.getElementById('journal-body');
+      var students = [];
+      var subject = '';
+      var cls = '';
+
+      dateInput.value = new Date().toISOString().slice(0, 10);
+
+      Promise.all([App.api.get(App.CONFIG.ENDPOINTS.myStudents), App.api.get(App.CONFIG.ENDPOINTS.subjects)])
+        .then(function (results) {
+          students = results[0] || [];
+          var subjects = results[1] || [];
+          var names = subjects.length ? subjects.map((s) => s.name) : App.CONFIG.SUBJECTS;
+          names.forEach(function (n) { subjectSel.appendChild(App.ui.h('option', { value: n }, n)); });
+          Array.from(new Set(students.map((s) => s.class_name).filter(Boolean))).forEach(function (c) {
+            classSel.appendChild(App.ui.h('option', { value: c }, c));
+          });
+          subject = names[0];
+          subjectSel.value = subject;
+          draw();
+        })
+        .catch(function (err) { App.ui.mount(body, App.ui.errorState(err.message)); });
+
+      subjectSel.addEventListener('change', function (e) { subject = e.target.value; draw(); });
+      classSel.addEventListener('change', function (e) { cls = e.target.value; draw(); });
+      dateInput.addEventListener('change', draw);
+
+      function draw() {
+        App.ui.mount(body, App.ui.spinner('Загрузка журнала…'));
+        App.api.get(App.CONFIG.ENDPOINTS.journal, { subject: subject })
+          .then(function (entries) {
+            var map = {};
+            (entries || []).forEach(function (en) { map[en.student_id + '|' + en.date] = en; });
+            var list = students.filter((s) => !cls || s.class_name === cls);
+            if (!list.length) { App.ui.mount(body, App.ui.emptyState('Нет учеников для выбранного фильтра.')); return; }
+            App.ui.mount(body, list.map(function (s) {
+              var existing = map[s.id + '|' + dateInput.value] || {};
+              var attSel = select(['Б', 'Н/Б'], existing.attendance || 'Б');
+              var gradeSel = select(['', '1', '2', '3', '4', '5'], existing.grade != null ? String(existing.grade) : '', true);
+              var comment = App.ui.h('input', { class: 'input input--sm', value: existing.comment || '', placeholder: 'Комментарий…' });
+              return App.ui.h('tr', { 'data-sid': String(s.id) },
+                App.ui.h('td', null,
+                  App.ui.h('strong', null, s.full_name),
+                  App.ui.h('div', { class: 'muted small' }, s.class_name || '')),
+                App.ui.h('td', null, attSel),
+                App.ui.h('td', null, gradeSel),
+                App.ui.h('td', null, comment));
+            }));
+          })
+          .catch(function (err) { App.ui.mount(body, App.ui.errorState(err.message)); });
+      }
+
+      function select(options, value) {
+        var sel = App.ui.h('select', { class: 'input input--xs' });
+        options.forEach(function (opt) { sel.appendChild(App.ui.h('option', { value: opt }, opt === '' ? '—' : opt)); });
+        sel.value = value;
+        return sel;
+      }
+
+      document.getElementById('btn-save').addEventListener('click', async function () {
+        var rows = body.querySelectorAll('tr[data-sid]');
+        var tasks = Array.from(rows).map(function (tr) {
+          var selects = tr.querySelectorAll('select');
+          var gradeVal = selects[1].value;
+          return App.api.post(App.CONFIG.ENDPOINTS.journal, {
+            student_id: Number(tr.getAttribute('data-sid')),
+            subject: subject,
+            date: dateInput.value,
+            attendance: selects[0].value,
+            grade: gradeVal === '' ? null : Number(gradeVal),
+            comment: tr.querySelector('input').value,
+          });
+        });
+        var btn = document.getElementById('btn-save');
+        btn.disabled = true;
+        try {
+          await Promise.all(tasks);
+          App.ui.toast('Журнал сохранён', 'success');
+          draw();
+        } catch (err) { App.ui.toast(err.message, 'error'); }
+        finally { btn.disabled = false; }
+      });
+    })();
+  </script>
+</body>
+</html>

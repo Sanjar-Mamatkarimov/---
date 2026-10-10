@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Вход — Э-Күндөлүк</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="login">
+    <div class="login__bg"></div>
+
+    <div class="login__card">
+      <div class="login__brand">
+        <div class="login__logo">🎵</div>
+        <div>
+          <h1 class="login__title">Э-Күндөлүк</h1>
+          <p class="login__subtitle">Электронный дневник музыкальной школы</p>
+        </div>
+      </div>
+
+      <form class="login__form" id="login-form" novalidate>
+        <label class="field">
+          <span class="field__label">Логин</span>
+          <input class="input" name="username" placeholder="Введите логин" autocomplete="username" required />
+        </label>
+        <label class="field">
+          <span class="field__label">Пароль</span>
+          <input class="input" name="password" type="password" placeholder="Введите пароль" autocomplete="current-password" required />
+        </label>
+        <div class="login__error" id="login-error" style="display:none"></div>
+        <button class="btn btn--primary btn--block" type="submit" id="login-submit">Войти</button>
+      </form>
+
+      <div class="login__demo" id="demo-box">
+        <p class="login__demo-title">Демо-доступ (бэкенд не требуется)</p>
+        <ul class="login__demo-list">
+          <li class="demo-login" data-login="director"><b>Директор</b><span>director / director</span></li>
+          <li class="demo-login" data-login="teacher"><b>Учитель</b><span>teacher / teacher</span></li>
+          <li class="demo-login" data-login="student"><b>Ученик</b><span>student / student</span></li>
+        </ul>
+      </div>
+    </div>
+
+    <p class="login__footer">© 2026 Музыкальная школа. Все права защищены.</p>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/mock.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/shell.js"></script>
+  <script>
+    /* ---------- логика страницы входа ---------- */
+    (function () {
+      'use strict';
+      var form = document.getElementById('login-form');
+      var errorBox = document.getElementById('login-error');
+      var submitBtn = document.getElementById('login-submit');
+      var demoBox = document.getElementById('demo-box');
+
+      // уже вошли? -> сразу на свою главную
+      if (App.auth.isAuthenticated()) {
+        location.replace(App.homeForRole(App.auth.getRole()));
+        return;
+      }
+
+      if (!App.CONFIG.DEMO_MODE && demoBox) demoBox.style.display = 'none';
+
+      if (demoBox) {
+        demoBox.querySelectorAll('.demo-login').forEach(function (li) {
+          li.addEventListener('click', function () {
+            var login = li.getAttribute('data-login');
+            form.querySelector('input[name="username"]').value = login;
+            form.querySelector('input[name="password"]').value = login;
+          });
+        });
+      }
+
+      form.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        var username = form.querySelector('input[name="username"]').value.trim();
+        var password = form.querySelector('input[name="password"]').value;
+        if (!username || !password) {
+          showError('Введите логин и пароль');
+          return;
+        }
+        errorBox.style.display = 'none';
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Вход…';
+        try {
+          var user = await App.api.login(username, password);
+          var name = user && (user.full_name || user.username) || username;
+          App.ui.toast('Добро пожаловать, ' + name + '!', 'success');
+          location.href = App.homeForRole(user && user.role);
+        } catch (err) {
+          showError(err && err.message ? err.message : 'Ошибка входа');
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Войти';
+        }
+      });
+
+      function showError(msg) {
+        errorBox.textContent = msg;
+        errorBox.style.display = '';
+      }
+    })();
+  </script>
+</body>
+</html>
