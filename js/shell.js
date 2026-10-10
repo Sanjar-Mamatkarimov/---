@@ -94,14 +94,6 @@
         const href = ((a.getAttribute('href') || '').split('#')[0]).toLowerCase();
         if (href === current || (href === 'dashboard.html' && current === '')) a.classList.add('is-active');
       });
-
-      // баннер демо-режима
-      if (App.CONFIG.DEMO_MODE && !document.querySelector('.demo-banner')) {
-        document.body.appendChild(h('div', { class: 'demo-banner' },
-          h('span', null,
-            '🧪 Демо-режим: данные хранятся в браузере и сбрасываются при перезагрузке. ' +
-            'Для работы с Django REST установите DEMO_MODE = false в js/config.js.')));
-      }
     },
 
     logout() {
